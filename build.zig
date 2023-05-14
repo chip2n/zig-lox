@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
+        .name = "zig-lox-tests",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
@@ -35,4 +36,9 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    // Install test binary (for debugging with GDB)
+    const unit_tests_bin = b.addInstallArtifact(unit_tests);
+    unit_tests_bin.dest_dir = .{ .custom = "test" };
+    test_step.dependOn(&unit_tests_bin.step);
 }

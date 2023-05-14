@@ -16,6 +16,7 @@ const Chunk = struct {
 
     data: std.ArrayList(u8),
     constants: std.ArrayList(Value),
+
     lines: std.ArrayList(usize),
 
     fn init(allocator: std.mem.Allocator) Self {
@@ -123,4 +124,8 @@ pub fn main() !void {
     try chunk.write(.ret, 123);
 
     try disassembleChunk(&chunk, "test chunk");
+}
+
+test {
+    std.testing.refAllDecls(@import("run_length_array_list.zig"));
 }
