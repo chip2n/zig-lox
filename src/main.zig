@@ -16,21 +16,26 @@ const Chunk = struct {
 
     data: std.ArrayList(u8),
     constants: std.ArrayList(Value),
+    lines: std.ArrayList(usize),
 
     fn init(allocator: std.mem.Allocator) Self {
         return .{
             .data = std.ArrayList(u8).init(allocator),
             .constants = std.ArrayList(Value).init(allocator),
+            .lines = std.ArrayList(usize).init(allocator),
         };
     }
 
     fn deinit(self: *Self) void {
         self.data.deinit();
         self.constants.deinit();
+        self.lines.deinit();
     }
 
-    fn write(self: *Self, data: anytype) !void {
+    fn write(self: *Self, data: anytype, line: usize) !void {
         const T = @TypeOf(data);
+        try self.lines.append(line);
+        errdefer _ = self.lines.pop();
         switch (T) {
             u8 => try self.data.append(data),
             OpCode => try self.data.append(@enumToInt(data)),
@@ -70,6 +75,12 @@ fn disassembleChunk(chunk: *const Chunk, name: []const u8) !void {
 fn disassembleInstruction(chunk: *const Chunk, offset: usize) !usize {
     try stdout.print("{d:0>4} ", .{offset});
 
+    if (offset > 0 and (chunk.lines.items[offset] == chunk.lines.items[offset - 1])) {
+        try stdout.print("   | ", .{});
+    } else {
+        try stdout.print("{d:4} ", .{chunk.lines.items[offset]});
+    }
+
     const byte = chunk.data.items[offset];
     const instruction = std.meta.intToEnum(OpCode, byte) catch {
         try stdout.print("Unknown opcode {}\n", .{byte});
@@ -107,10 +118,9 @@ pub fn main() !void {
     defer chunk.deinit();
 
     const c = try chunk.addConstant(1.2);
-    try chunk.write(.constant);
-    try chunk.write(c);
-
-    try chunk.write(.ret);
+    try chunk.write(.constant, 123);
+    try chunk.write(c, 123);
+    try chunk.write(.ret, 123);
 
     try disassembleChunk(&chunk, "test chunk");
 }
