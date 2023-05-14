@@ -1,4 +1,5 @@
 const std = @import("std");
+const RunLengthArrayList = @import("run_length_array_list.zig").RunLengthArrayList;
 
 const stdout_file = std.io.getStdOut().writer();
 var bw = std.io.bufferedWriter(stdout_file);
@@ -17,13 +18,13 @@ const Chunk = struct {
     data: std.ArrayList(u8),
     constants: std.ArrayList(Value),
 
-    lines: std.ArrayList(usize),
+    lines: RunLengthArrayList(usize),
 
     fn init(allocator: std.mem.Allocator) Self {
         return .{
             .data = std.ArrayList(u8).init(allocator),
             .constants = std.ArrayList(Value).init(allocator),
-            .lines = std.ArrayList(usize).init(allocator),
+            .lines = RunLengthArrayList(usize).init(allocator),
         };
     }
 
@@ -76,10 +77,10 @@ fn disassembleChunk(chunk: *const Chunk, name: []const u8) !void {
 fn disassembleInstruction(chunk: *const Chunk, offset: usize) !usize {
     try stdout.print("{d:0>4} ", .{offset});
 
-    if (offset > 0 and (chunk.lines.items[offset] == chunk.lines.items[offset - 1])) {
+    if (offset > 0 and (chunk.lines.getValue(offset) == chunk.lines.getValue(offset - 1))) {
         try stdout.print("   | ", .{});
     } else {
-        try stdout.print("{d:4} ", .{chunk.lines.items[offset]});
+        try stdout.print("{d:4} ", .{chunk.lines.getValue(offset).?});
     }
 
     const byte = chunk.data.items[offset];

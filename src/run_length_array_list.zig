@@ -7,13 +7,13 @@ pub fn RunLengthArrayList(comptime T: type) type {
 
         data: std.ArrayList(u8),
 
-        fn init(allocator: std.mem.Allocator) Self {
+        pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .data = std.ArrayList(u8).init(allocator),
             };
         }
 
-        fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self) void {
             self.data.deinit();
         }
 
@@ -29,6 +29,19 @@ pub fn RunLengthArrayList(comptime T: type) type {
 
             self.data.items[self.data.items.len - byte_len - 1] += 1;
             return;
+        }
+
+        pub fn pop(self: *Self) T {
+            const count = &self.data.items[self.data.items.len - byte_len - 1];
+            const value = self.readLastValue();
+
+            if (count.* == 1) {
+                self.data.items.len -= byte_len + 1;
+            } else {
+                count.* -= 1;
+            }
+
+            return value.?;
         }
 
         pub fn getValue(self: *const Self, index: usize) ?T {
@@ -51,7 +64,7 @@ pub fn RunLengthArrayList(comptime T: type) type {
 
         fn readValueAtRaw(self: *const Self, index: usize) ?T {
             std.debug.assert(index + byte_len <= self.data.items.len);
-            const v = std.mem.readIntNative(T, @ptrCast(*const [4]u8, self.data.items[index..]));
+            const v = std.mem.readIntNative(T, @ptrCast(*const [byte_len]u8, self.data.items[index..]));
             return v;
         }
     };
@@ -89,4 +102,18 @@ test "getValue" {
     try std.testing.expectEqual(arr.getValue(1), 1);
     try std.testing.expectEqual(arr.getValue(2), 2);
     try std.testing.expectEqual(arr.getValue(3), 3);
+}
+
+test "pop" {
+    var arr = RunLengthArrayList(u32).init(test_allocator);
+    defer arr.deinit();
+
+    try arr.append(1);
+    try arr.append(1);
+    try arr.append(2);
+
+    try std.testing.expectEqual(@as(u32, 2), arr.pop());
+    try std.testing.expectEqual(@as(u32, 1), arr.pop());
+    try std.testing.expectEqual(@as(u32, 1), arr.pop());
+    try std.testing.expectEqual(@as(usize, 0), arr.data.items.len);
 }
