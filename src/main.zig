@@ -6,15 +6,61 @@ const stdout = bw.writer();
 
 const OpCode = enum(u8) {
     ret,
+    constant,
 };
 
-const Chunk = std.ArrayList(u8);
+const Value = f64;
+
+const Chunk = struct {
+    const Self = @This();
+
+    data: std.ArrayList(u8),
+    constants: std.ArrayList(Value),
+
+    fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .data = std.ArrayList(u8).init(allocator),
+            .constants = std.ArrayList(Value).init(allocator),
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        self.data.deinit();
+        self.constants.deinit();
+    }
+
+    fn write(self: *Self, data: anytype) !void {
+        const T = @TypeOf(data);
+        switch (T) {
+            u8 => try self.data.append(data),
+            OpCode => try self.data.append(@enumToInt(data)),
+            else => {
+                // Allow plain enum literals if there's a matching OpCode
+                if (@typeInfo(T) == .EnumLiteral) {
+                    inline for (std.meta.fields(OpCode)) |tag| {
+                        if (comptime std.mem.eql(u8, tag.name, @tagName(data))) {
+                            return try self.data.append(tag.value);
+                        }
+                    }
+                    @compileError("Enum literal ." ++ @tagName(data) ++ " is not a valid op code.");
+                } else {
+                    @compileError("Type " ++ @typeName(T) ++ " cannot be written to " ++ @typeName(Self));
+                }
+            },
+        }
+    }
+
+    fn addConstant(self: *Self, constant: Value) !u8 {
+        try self.constants.append(constant);
+        return @intCast(u8, self.constants.items.len - 1);
+    }
+};
 
 fn disassembleChunk(chunk: *const Chunk, name: []const u8) !void {
     try stdout.print("== {s} ==\n", .{name});
 
     var offset: usize = 0;
-    while (offset < chunk.items.len) {
+    while (offset < chunk.data.items.len) {
         offset = try disassembleInstruction(chunk, offset);
     }
 
@@ -24,19 +70,32 @@ fn disassembleChunk(chunk: *const Chunk, name: []const u8) !void {
 fn disassembleInstruction(chunk: *const Chunk, offset: usize) !usize {
     try stdout.print("{d:0>4} ", .{offset});
 
-    const byte = chunk.items[offset];
+    const byte = chunk.data.items[offset];
     const instruction = std.meta.intToEnum(OpCode, byte) catch {
         try stdout.print("Unknown opcode {}\n", .{byte});
         return offset + 1;
     };
     switch (instruction) {
         .ret => return try simpleInstruction("OP_RETURN", offset),
+        .constant => return try constantInstruction("OP_CONSTANT", chunk, offset),
     }
 }
 
 fn simpleInstruction(name: []const u8, offset: usize) !usize {
     try stdout.print("{s}\n", .{name});
     return offset + 1;
+}
+
+fn constantInstruction(name: []const u8, chunk: *const Chunk, offset: usize) !usize {
+    const c = chunk.data.items[offset + 1];
+    try stdout.print("{s: <16} {d} '", .{ name, c });
+    try printValue(chunk.constants.items[c]);
+    try stdout.print("'\n", .{});
+    return offset + 2;
+}
+
+fn printValue(value: Value) !void {
+    try stdout.print("{d}", .{value});
 }
 
 pub fn main() !void {
@@ -47,7 +106,11 @@ pub fn main() !void {
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 
-    try chunk.append(@enumToInt(OpCode.ret));
+    const c = try chunk.addConstant(1.2);
+    try chunk.write(.constant);
+    try chunk.write(c);
+
+    try chunk.write(.ret);
 
     try disassembleChunk(&chunk, "test chunk");
 }
